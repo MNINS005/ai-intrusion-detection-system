@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IDS Detector</title>
+    <style>
+        body { font-family: Arial; margin: 40px; }
+        .container { max-width: 650px; margin: auto; }
+
+        .field { margin-bottom: 12px; }
+        label { font-weight: bold; }
+        small { display: block; color: gray; }
+
+        input {
+            width: 100%;
+            padding: 8px;
+            margin-top: 4px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+
+        #result {
+            margin-top: 20px;
+            font-size: 22px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+<h2>Intrusion Detection System 🚀</h2>
+
+<!-- BASIC FEATURES -->
+
+<div class="field">
+    <label>Duration</label>
+    <small>Time of connection (seconds)</small>
+    <input id="duration" placeholder="e.g. 2">
+</div>
+
+<div class="field">
+    <label>Source Bytes</label>
+    <small>Data sent from source to destination</small>
+    <input id="src_bytes" placeholder="e.g. 500">
+</div>
+
+<div class="field">
+    <label>Destination Bytes</label>
+    <small>Data received from destination</small>
+    <input id="dst_bytes" placeholder="e.g. 200">
+</div>
+
+<div class="field">
+    <label>Wrong Fragment</label>
+    <small>Number of fragmented packets (usually 0)</small>
+    <input id="wrong_fragment" placeholder="0">
+</div>
+
+<div class="field">
+    <label>Urgent</label>
+    <small>Urgent packets count (usually 0)</small>
+    <input id="urgent" placeholder="0">
+</div>
+
+<div class="field">
+    <label>Count</label>
+    <small>Connections to same host</small>
+    <input id="count" placeholder="5">
+</div>
+
+<div class="field">
+    <label>Service Count</label>
+    <small>Connections to same service</small>
+    <input id="srv_count" placeholder="3">
+</div>
+
+<!-- EXTRA FEATURES -->
+
+<div id="more" class="hidden">
+
+    <div class="field">
+        <label>Land</label>
+        <small>1 if connection is from/to same host/port</small>
+        <input id="land">
+    </div>
+
+    <div class="field">
+        <label>Hot</label>
+        <small>Number of suspicious commands</small>
+        <input id="hot">
+    </div>
+
+    <div class="field">
+        <label>Logged In</label>
+        <small>1 if successfully logged in</small>
+        <input id="logged_in">
+    </div>
+
+</div>
+
+<button onclick="toggleMore()">More Features</button>
+<button onclick="predict()">Predict</button>
+
+<div id="result"></div>
+
+</div>
+
+<script>
+
+function getValue(id) {
+    const val = document.getElementById(id).value;
+    return val ? parseFloat(val) : 0;
+}
+
+function toggleMore() {
+    document.getElementById("more").classList.toggle("hidden");
+}
+
+async function predict() {
+
+    const data = {
+        duration: getValue("duration"),
+        src_bytes: getValue("src_bytes"),
+        dst_bytes: getValue("dst_bytes"),
+        wrong_fragment: getValue("wrong_fragment"),
+        urgent: getValue("urgent"),
+        count: getValue("count"),
+        srv_count: getValue("srv_count"),
+    };
+
+    const res = await fetch("/predict", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+    });
+
+    const result = await res.json();
+
+    document.getElementById("result").innerText =
+        result.prediction ? "Prediction: " + result.prediction
+        : "Error: " + JSON.stringify(result);
+}
+
+</script>
+
+</body>
+</html>
