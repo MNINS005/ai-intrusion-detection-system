@@ -1,0 +1,19 @@
+{
+  "RandomForest": {
+    "best_params": {
+      "max_depth": null,
+      "min_samples_split": 2,
+      "n_estimators": 100
+    },
+    "cv_f1": 0.9989,
+    "test_f1": 0.7611
+  },
+  "DecisionTree": {
+    "best_params": {
+      "max_depth": 20,
+      "min_samples_split": 2
+    },
+    "cv_f1": 0.9984,
+    "test_f1": 0.7899
+  }
+}
