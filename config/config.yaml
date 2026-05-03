@@ -1,0 +1,32 @@
+data_ingestion:
+  raw_data_dir: "artifacts/raw"
+  # ── Put your local file paths here after downloading ──
+  train_data_path: "notebook/data/KDDTrain+.txt"
+  test_data_path:  "notebook/data/KDDTest+.txt"
+  # Ingestion will copy/split them to:
+  ingested_train_path: "artifacts/raw/train.csv"
+  ingested_test_path:  "artifacts/raw/test.csv"
+
+data_preprocessing:
+  processed_dir: "artifacts/processed"
+  preprocessed_train_path: "artifacts/processed/train.csv"
+  preprocessed_test_path:  "artifacts/processed/test.csv"
+  target_column:           "label"
+  drop_columns:            ["difficulty_level"]
+  binary_classification:   true    # false → 5-class (normal/DoS/Probe/R2L/U2R)
+
+data_transformation:
+  transformed_dir:       "artifacts/transformed"
+  train_arr_path:        "artifacts/transformed/train.npz"
+  test_arr_path:         "artifacts/transformed/test.npz"
+  preprocessor_obj_path: "artifacts/transformed/preprocessor.pkl"
+  scaler:                "standard"   # standard | minmax | robust
+
+model_trainer:
+  model_dir:   "artifacts/models"
+  model_path:  "artifacts/models/model.pkl"
+  random_state: 42
+
+model_evaluation:
+  reports_dir: "artifacts/reports"
+  metrics_path: "artifacts/reports/metrics.json"
