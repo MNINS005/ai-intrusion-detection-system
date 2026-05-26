@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import GridSearchCV
+from sklearn.ensemble import RandomForestClassifier
+
 from sklearn.metrics import f1_score
 
 try:

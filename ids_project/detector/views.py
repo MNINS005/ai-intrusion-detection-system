@@ -1,249 +1,129 @@
-"""
-detector/views.py
-──────────────────
-Thin views:
-- HTTP request handling
-- validation
-- response handling
-
-Business logic lives in services.py
-"""
-
-import logging
-
-from django.views import View
-from django.views.generic import TemplateView, ListView, DetailView
-from django.http import JsonResponse
 from django.shortcuts import render
+from django.views import View
+from django.contrib import messages
 
-from .forms import NetworkRecordForm
-from .mixins import StaffRequiredMixin, PipelineCheckMixin
-from .models import PredictionLog, PredictionFeatures, ModelVersion
-from .services import (
-    run_prediction,
-    run_training_pipeline,
-    get_pipeline
-)
+from .forms import PredictionForm
+from .models import PredictionLog
 
-from src.constants import (
-    CLASS_NAMES,
-    NUMERICAL_FEATURES,
-    CATEGORICAL_FEATURES
-)
-
-logger = logging.getLogger(__name__)
+from src.pipeline.prediction_pipeline import PredictPipeline, CustomData
 
 
-# ─────────────────────────────────────────────────────────────
-# Home View
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────
+# Pipeline loaded once at startup — not on every request
+# ─────────────────────────────────────────────────────────────────
 
-class HomeView(TemplateView):
-
-    template_name = "detector/home.html"
-
-    def get_context_data(self, **kwargs):
-
-        context = super().get_context_data(**kwargs)
-
-        context["model_loaded"] = get_pipeline() is not None
-
-        context["total_predictions"] = (
-            PredictionLog.objects.count()
-        )
-
-        context["active_model"] = (
-            ModelVersion.objects
-            .filter(is_active=True)
-            .first()
-        )
-
-        context["class_names"] = CLASS_NAMES
-
-        return context
+pipeline = PredictPipeline()
 
 
-# ─────────────────────────────────────────────────────────────
-# Prediction View
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────
+# Views
+# ─────────────────────────────────────────────────────────────────
 
-class PredictView(PipelineCheckMixin, View):
+class HomeView(View):
+    """
+    GET  → empty prediction form
+    POST → validate → predict → save to DB → show result
+    """
 
-    template_name = "detector/predict.html"
+    template_name = 'detector/home.html'
 
     def get(self, request):
-
-        form = NetworkRecordForm()
-
-        return render(
-            request,
-            self.template_name,
-            {
-                "form": form,
-                "model_loaded": get_pipeline() is not None,
-            }
-        )
+        form = PredictionForm()
+        return render(request, self.template_name, {'form': form, 'title': 'Home'})
 
     def post(self, request):
+        form = PredictionForm(request.POST)
 
-        form = NetworkRecordForm(request.POST)
+        if form.is_valid():
+            try:
+                # Build CustomData with user's 5 fields + safe defaults for the rest
+                data = CustomData(
+                    duration                    = 0,
+                    protocol_type               = form.cleaned_data['protocol_type'],
+                    service                     = form.cleaned_data['service'],
+                    flag                        = form.cleaned_data['flag'],
+                    src_bytes                   = form.cleaned_data['src_bytes'],
+                    dst_bytes                   = form.cleaned_data['dst_bytes'],
+                    land                        = 0,
+                    wrong_fragment              = 0,
+                    urgent                      = 0,
+                    hot                         = 0,
+                    num_failed_logins           = 0,
+                    logged_in                   = 1,
+                    num_compromised             = 0,
+                    root_shell                  = 0,
+                    su_attempted                = 0,
+                    num_root                    = 0,
+                    num_file_creations          = 0,
+                    num_shells                  = 0,
+                    num_access_files            = 0,
+                    num_outbound_cmds           = 0,
+                    is_host_login               = 0,
+                    is_guest_login              = 0,
+                    count                       = 0,
+                    srv_count                   = 0,
+                    serror_rate                 = 0.0,
+                    srv_serror_rate             = 0.0,
+                    rerror_rate                 = 0.0,
+                    srv_rerror_rate             = 0.0,
+                    same_srv_rate               = 1.0,
+                    diff_srv_rate               = 0.0,
+                    srv_diff_host_rate          = 0.0,
+                    dst_host_count              = 0,
+                    dst_host_srv_count          = 0,
+                    dst_host_same_srv_rate      = 1.0,
+                    dst_host_diff_srv_rate      = 0.0,
+                    dst_host_same_src_port_rate = 0.0,
+                    dst_host_srv_diff_host_rate = 0.0,
+                    dst_host_serror_rate        = 0.0,
+                    dst_host_srv_serror_rate    = 0.0,
+                    dst_host_rerror_rate        = 0.0,
+                    dst_host_srv_rerror_rate    = 0.0,
+                )
 
-        if not form.is_valid():
+                df              = data.get_data_as_dataframe()
+                predicted_label = int(pipeline.predict(df)[0])
 
-            return JsonResponse(
-                {
-                    "status": "error",
-                    "errors": form.errors,
-                },
-                status=400,
-            )
+                # Isolation Forest: -1 = anomaly, 1 = normal
+                predicted_class = 'Anomaly' if predicted_label == 1 else 'Normal'
 
-        try:
+                PredictionLog.objects.create(
+                    protocol_type   = form.cleaned_data['protocol_type'],
+                    service         = form.cleaned_data['service'],
+                    flag            = form.cleaned_data['flag'],
+                    src_bytes       = form.cleaned_data['src_bytes'],
+                    dst_bytes       = form.cleaned_data['dst_bytes'],
+                    predicted_label = predicted_label,
+                    predicted_class = predicted_class,
+                )
 
-            result = run_prediction(form.cleaned_data)
-
-            return JsonResponse(result.to_dict())
-
-        except Exception as e:
-
-            logger.exception("Prediction failed.")
-
-            return JsonResponse(
-                {
-                    "status": "error",
-                    "message": str(e),
-                },
-                status=500,
-            )
-
-
-# ─────────────────────────────────────────────────────────────
-# Training View (Staff Only)
-# ─────────────────────────────────────────────────────────────
-
-class TrainView(StaffRequiredMixin, View):
-
-    """
-    Restricted training endpoint.
-
-    In production:
-    - move to Celery/background worker
-    - avoid public access
-    """
-
-    def post(self, request):
-
-        try:
-
-            metrics = run_training_pipeline()
-
-            return JsonResponse(
-                {
-                    "status": "success",
-                    "message": "Training completed.",
-
-                    "metrics": {
-                        "accuracy": metrics.get("accuracy"),
-                        "f1_weighted": metrics.get("f1_weighted"),
-                    },
+                context = {
+                    'form':   form,
+                    'result': predicted_class,
+                    'title':  'Home',
                 }
-            )
+                return render(request, self.template_name, context)
 
-        except Exception as e:
+            except Exception as e:
+                messages.error(request, f'Prediction failed: {e}')
 
-            logger.exception("Training failed.")
-
-            return JsonResponse(
-                {
-                    "status": "error",
-                    "message": str(e),
-                },
-                status=500,
-            )
+        return render(request, self.template_name, {'form': form, 'title': 'Home'})
 
 
-# ─────────────────────────────────────────────────────────────
-# Prediction History
-# ─────────────────────────────────────────────────────────────
+class HistoryView(View):
+    """All past predictions, newest first."""
 
-class HistoryView(ListView):
+    template_name = 'detector/history.html'
 
-    model = PredictionLog
-
-    template_name = "detector/history.html"
-
-    context_object_name = "logs"
-
-    ordering = ["-created_at"]
-
-    paginate_by = 20
-
-    def get_queryset(self):
-
-        queryset = super().get_queryset()
-
-        cls_filter = self.request.GET.get("class")
-
-        if (
-            cls_filter and
-            cls_filter in CLASS_NAMES.values()
-        ):
-            queryset = queryset.filter(
-                predicted_class=cls_filter
-            )
-
-        return queryset
-
-    def get_context_data(self, **kwargs):
-
-        context = super().get_context_data(**kwargs)
-
-        context["class_names"] = CLASS_NAMES
-
-        context["total"] = (
-            PredictionLog.objects.count()
-        )
-
-        context["active_filter"] = (
-            self.request.GET.get("class", "")
-        )
-
-        return context
+    def get(self, request):
+        logs = PredictionLog.objects.order_by('-created_at')
+        return render(request, self.template_name, {'logs': logs, 'title': 'History'})
 
 
-# ─────────────────────────────────────────────────────────────
-# Prediction Detail View
-# ─────────────────────────────────────────────────────────────
+class AboutView(View):
+    """Static about page."""
 
-class PredictionDetailView(DetailView):
+    template_name = 'detector/about.html'
 
-    model = PredictionLog
-
-    template_name = "detector/prediction_detail.html"
-
-    context_object_name = "log"
-
-    def get_context_data(self, **kwargs):
-
-        context = super().get_context_data(**kwargs)
-
-        context["features"] = self._get_features()
-
-        context["feature_fields"] = (
-            CATEGORICAL_FEATURES +
-            NUMERICAL_FEATURES
-        )
-
-        return context
-
-    def _get_features(self):
-
-        try:
-
-            return self.object.predictionfeatures
-
-        except PredictionFeatures.DoesNotExist:
-
-            return None
-
-# Create your views here.
+    def get(self, request):
+        return render(request, self.template_name, {'title': 'About'})

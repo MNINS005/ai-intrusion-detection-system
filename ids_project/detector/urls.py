@@ -1,19 +1,8 @@
-
 from django.urls import path
-from .views import (
-    HomeView,
-    TrainView,
-    PredictView,
-    BatchPredictView,
-    HistoryView,
-    PredictionDetailView,
-)
- 
+from . import views
+
 urlpatterns = [
-    path("",                  HomeView.as_view(),          name="home"),
-    path("train/",            TrainView.as_view(),          name="train"),
-    path("predict/",          PredictView.as_view(),        name="predict"),
-    path("predict/batch/",    BatchPredictView.as_view(),   name="predict-batch"),
-    path("history/",          HistoryView.as_view(),        name="history"),
-    path("history/<int:pk>/", PredictionDetailView.as_view(), name="prediction-detail"),
+    path('',         views.HomeView.as_view(),    name='ids-home'),
+    path('history/', views.HistoryView.as_view(), name='ids-history'),
+    path('about/',   views.AboutView.as_view(),   name='ids-about'),
 ]

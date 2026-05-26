@@ -15,5 +15,14 @@
     },
     "cv_f1": 0.9984,
     "test_f1": 0.7899
+  },
+  "XGBoost": {
+    "best_params": {
+      "learning_rate": 0.1,
+      "max_depth": 7,
+      "n_estimators": 200
+    },
+    "cv_f1": 0.999,
+    "test_f1": 0.7911
   }
 }

@@ -2,11 +2,12 @@
 Prediction Pipeline
 ────────────────────
 Loads preprocessor.pkl + model.pkl and runs inference on new input.
-Used by app.py / FastAPI endpoint.
 """
 
+import os
 import sys
 import pandas as pd
+import os
 from dataclasses import dataclass
 
 from src.logger import get_logger
@@ -16,7 +17,9 @@ from src.constants import CATEGORICAL_FEATURES, NUMERICAL_FEATURES
 
 logger = get_logger(__name__)
 
-CONFIG_PATH = "config/config.yaml"
+
+
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config', 'config.yaml')
 
 
 @dataclass
@@ -62,3 +65,4 @@ class CustomData:
             return pd.DataFrame([self.data])
         except Exception as e:
             raise IDSException(e, sys)
+        

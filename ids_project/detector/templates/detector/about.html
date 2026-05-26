@@ -1,0 +1,39 @@
+{% extends "detector/base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7">
+        <h4 class="mb-4">About This Project</h4>
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <h6 class="card-title">🤖 Model</h6>
+                <p class="card-text text-muted mb-0">
+                    Isolation Forest trained on the NSL-KDD dataset.
+                    It isolates anomalies by randomly partitioning features —
+                    anomalies require fewer splits and are flagged accordingly.
+                </p>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <h6 class="card-title">📊 Dataset</h6>
+                <p class="card-text text-muted mb-0">
+                    NSL-KDD — the improved benchmark for network intrusion detection,
+                    containing 41 features per connection record.
+                </p>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="card-title">⚙️ Stack</h6>
+                <p class="card-text text-muted mb-0">
+                    Python · Django · Scikit-learn · Pandas · Bootstrap 5
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

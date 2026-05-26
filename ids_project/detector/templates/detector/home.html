@@ -1,0 +1,58 @@
+{% extends "detector/base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0">🔍 Analyse Network Traffic</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" novalidate>
+                    {% csrf_token %}
+
+                    {% for field in form %}
+                        <div class="mb-3">
+                            <label for="{{ field.id_for_label }}" class="form-label fw-semibold">
+                                {{ field.label }}
+                            </label>
+                            {{ field }}
+                            {% if field.help_text %}
+                                <div class="form-text">{{ field.help_text }}</div>
+                            {% endif %}
+                            {% for error in field.errors %}
+                                <div class="text-danger small">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    {% endfor %}
+
+                    <button type="submit" class="btn btn-dark w-100">Analyse</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Result — only rendered after a successful POST -->
+        {% if result %}
+            <div class="card shadow-sm result-card {% if result == 'Anomaly' %}anomaly{% else %}normal{% endif %}">
+                <div class="card-body text-center py-4">
+                    <h6 class="text-muted mb-2">Prediction Result</h6>
+
+                    {% if result == 'Anomaly' %}
+                        <span class="badge bg-danger fs-5 px-4 py-2">⚠️ Anomaly Detected</span>
+                        <p class="mt-3 text-muted small">This traffic pattern looks suspicious.</p>
+                    {% else %}
+                        <span class="badge bg-success fs-5 px-4 py-2">✅ Normal Traffic</span>
+                        <p class="mt-3 text-muted small">No anomaly detected in this connection.</p>
+                    {% endif %}
+
+                    <a href="{% url 'ids-history' %}" class="btn btn-outline-secondary btn-sm mt-2">
+                        View History
+                    </a>
+                </div>
+            </div>
+        {% endif %}
+
+    </div>
+</div>
+{% endblock %}
