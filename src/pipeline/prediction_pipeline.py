@@ -16,10 +16,10 @@ from src.utils.utils import read_yaml, load_object
 from src.constants import CATEGORICAL_FEATURES, NUMERICAL_FEATURES
 
 logger = get_logger(__name__)
+# prediction_pipeline.py
+BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-
-
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config', 'config.yaml')
+CONFIG_PATH = os.path.join(BASE, 'config', 'config.yaml')
 
 
 @dataclass

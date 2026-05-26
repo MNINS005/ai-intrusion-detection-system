@@ -19,12 +19,12 @@ data_transformation:
   transformed_dir:       "artifacts/transformed"
   train_arr_path:        "artifacts/transformed/train.npz"
   test_arr_path:         "artifacts/transformed/test.npz"
-  preprocessor_obj_path: "artifacts/transformed/preprocessor.pkl"
+  preprocessor_obj_path: "../artifacts/transformed/preprocessor.pkl"
   scaler:                "standard"   # standard | minmax | robust
 
 model_trainer:
   model_dir:   "artifacts/models"
-  model_path:  "artifacts/models/model.pkl"
+  model_path:  "../artifacts/models/model.pkl"
   random_state: 42
 
 model_evaluation:
