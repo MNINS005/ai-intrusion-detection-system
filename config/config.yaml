@@ -15,6 +15,7 @@ data_preprocessing:
   drop_columns:            ["difficulty_level"]
   binary_classification:   true    # false → 5-class (normal/DoS/Probe/R2L/U2R)
 
+
 data_transformation:
   transformed_dir:       "artifacts/transformed"
   train_arr_path:        "artifacts/transformed/train.npz"
