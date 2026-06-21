@@ -1,0 +1,182 @@
+{% extends "detector/base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-5 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0">Sniffer Control</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="packetCount" class="form-label fw-semibold">Packet Count</label>
+                    <input id="packetCount" class="form-control" type="number" min="0" value="0">
+                    <div class="form-text">Use 0 for continuous monitoring.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="captureFilter" class="form-label fw-semibold">Capture Filter</label>
+                    <input id="captureFilter" class="form-control" type="text" value="ip">
+                    <div class="form-text">Examples: ip, tcp, udp, port 8000, host 127.0.0.1</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="interfaceName" class="form-label fw-semibold">Interface</label>
+                    <input id="interfaceName" class="form-control" type="text" placeholder="Optional">
+                    <div class="form-text">Leave empty to use Scapy's default interface.</div>
+                </div>
+
+                <div class="form-check form-switch mb-3">
+                    <input id="layer3Mode" class="form-check-input" type="checkbox">
+                    <label class="form-check-label" for="layer3Mode">Use layer-3 fallback mode</label>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button id="startBtn" class="btn btn-success flex-fill" type="button">Start Monitoring</button>
+                    <button id="stopBtn" class="btn btn-outline-danger flex-fill" type="button">Stop</button>
+                </div>
+
+                <div id="messageBox" class="alert mt-3 d-none mb-0"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="row mb-3">
+            <div class="col-md-4 mb-3 mb-md-0">
+                <div class="card shadow-sm text-center py-3">
+                    <h6 class="text-muted mb-1">Status</h6>
+                    <h4 id="statusText" class="fw-bold mb-0">Checking</h4>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3 mb-md-0">
+                <div class="card shadow-sm text-center py-3">
+                    <h6 class="text-muted mb-1">Predictions</h6>
+                    <h4 id="totalPredictions" class="fw-bold mb-0">0</h4>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card shadow-sm text-center py-3">
+                    <h6 class="text-muted mb-1">Anomalies</h6>
+                    <h4 id="anomalyCount" class="fw-bold text-danger mb-0">0</h4>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-dark text-white">
+                <h6 class="mb-0">Running Command</h6>
+            </div>
+            <div class="card-body">
+                <code id="commandText" class="text-break">Not running</code>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white">
+                <h6 class="mb-0">Sniffer Log</h6>
+            </div>
+            <div class="card-body">
+                <pre id="logText" class="bg-light border rounded p-3 mb-0" style="min-height: 220px; white-space: pre-wrap;">No log output yet.</pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{ csrf_token_value|json_script:"csrf-token" }}
+<script>
+    const statusUrl = "{% url 'ids-sniffer-status' %}";
+    const startUrl = "{% url 'ids-sniffer-start' %}";
+    const stopUrl = "{% url 'ids-sniffer-stop' %}";
+    const csrfToken = JSON.parse(document.getElementById('csrf-token').textContent);
+
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const messageBox = document.getElementById('messageBox');
+    const statusText = document.getElementById('statusText');
+    const totalPredictions = document.getElementById('totalPredictions');
+    const anomalyCount = document.getElementById('anomalyCount');
+    const commandText = document.getElementById('commandText');
+    const logText = document.getElementById('logText');
+
+    function showMessage(text, type) {
+        messageBox.textContent = text;
+        messageBox.className = `alert alert-${type} mt-3 mb-0`;
+        messageBox.classList.remove('d-none');
+    }
+
+    function clearMessage() {
+        messageBox.classList.add('d-none');
+    }
+
+    function renderStatus(data) {
+        statusText.textContent = data.running ? 'Running' : 'Stopped';
+        statusText.className = data.running ? 'fw-bold text-success mb-0' : 'fw-bold text-secondary mb-0';
+        totalPredictions.textContent = data.total_predictions;
+        anomalyCount.textContent = data.anomaly_count;
+        commandText.textContent = data.command && data.command.length ? data.command.join(' ') : 'Not running';
+        logText.textContent = data.log_tail && data.log_tail.length ? data.log_tail.join('\n') : 'No log output yet.';
+        startBtn.disabled = data.running;
+        stopBtn.disabled = !data.running;
+    }
+
+    async function fetchStatus() {
+        const response = await fetch(statusUrl);
+        const data = await response.json();
+        renderStatus(data);
+    }
+
+    async function postJson(url, body) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify(body),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || 'Request failed.');
+        }
+        return data;
+    }
+
+    startBtn.addEventListener('click', async () => {
+        clearMessage();
+        startBtn.disabled = true;
+
+        try {
+            const payload = {
+                count: Number(document.getElementById('packetCount').value || 0),
+                filter: document.getElementById('captureFilter').value || 'ip',
+                iface: document.getElementById('interfaceName').value || '',
+                layer3: document.getElementById('layer3Mode').checked,
+            };
+            const data = await postJson(startUrl, payload);
+            renderStatus(data);
+            showMessage('Sniffer started.', 'success');
+        } catch (error) {
+            showMessage(error.message, 'danger');
+            await fetchStatus();
+        }
+    });
+
+    stopBtn.addEventListener('click', async () => {
+        clearMessage();
+        stopBtn.disabled = true;
+
+        try {
+            const data = await postJson(stopUrl, {});
+            renderStatus(data);
+            showMessage('Sniffer stopped.', 'secondary');
+        } catch (error) {
+            showMessage(error.message, 'danger');
+            await fetchStatus();
+        }
+    });
+
+    fetchStatus();
+    setInterval(fetchStatus, 2500);
+</script>
+{% endblock %}

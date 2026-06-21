@@ -1,5 +1,12 @@
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from threading import Lock
+
 from django.http import JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import render
 from django.views import View
 from django.contrib import messages
@@ -19,6 +26,16 @@ from src.pipeline.prediction_pipeline import PredictPipeline, CustomData
 # ─────────────────────────────────────────────────────────────────
 
 pipeline = PredictPipeline()
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SNIFFER_SCRIPT = PROJECT_ROOT / 'src' / 'local_sniffer.py'
+SNIFFER_LOG_PATH = PROJECT_ROOT / 'logs' / 'sniffer.log'
+SNIFFER_STATE = {
+    'process': None,
+    'log_handle': None,
+    'command': [],
+}
+SNIFFER_LOCK = Lock()
 
 
 DEFAULT_NETWORK_FEATURES = {
@@ -105,6 +122,81 @@ def predict_and_log_traffic(payload):
 
     return predicted_label, predicted_class
 
+
+def close_sniffer_log():
+    log_handle = SNIFFER_STATE.get('log_handle')
+    if log_handle and not log_handle.closed:
+        log_handle.close()
+    SNIFFER_STATE['log_handle'] = None
+
+
+def get_sniffer_process():
+    process = SNIFFER_STATE['process']
+    if process and process.poll() is None:
+        return process
+
+    if process:
+        close_sniffer_log()
+        SNIFFER_STATE['process'] = None
+        SNIFFER_STATE['command'] = []
+
+    return None
+
+
+def read_sniffer_log_tail(max_lines=12):
+    if not SNIFFER_LOG_PATH.exists():
+        return []
+
+    try:
+        with open(SNIFFER_LOG_PATH, 'r', encoding='utf-8', errors='replace') as log_file:
+            lines = log_file.readlines()
+        return [line.rstrip() for line in lines[-max_lines:]]
+    except OSError:
+        return []
+
+
+def build_sniffer_command(request, options):
+    endpoint = request.build_absolute_uri('/api/sniffer/predict/')
+    command = [
+        sys.executable,
+        str(SNIFFER_SCRIPT),
+        '--endpoint',
+        endpoint,
+    ]
+
+    count = int(options.get('count') or 0)
+    if count > 0:
+        command.extend(['--count', str(count)])
+
+    capture_filter = (options.get('filter') or 'ip').strip()
+    if capture_filter:
+        command.extend(['--filter', capture_filter])
+
+    iface = (options.get('iface') or '').strip()
+    if iface:
+        command.extend(['--iface', iface])
+
+    if options.get('layer3'):
+        command.append('--layer3')
+
+    return command
+
+
+def sniffer_status_payload():
+    process = get_sniffer_process()
+    total = PredictionLog.objects.count()
+    anomalies = PredictionLog.objects.filter(predicted_class='Anomaly').count()
+
+    return {
+        'running': bool(process),
+        'pid': process.pid if process else None,
+        'command': SNIFFER_STATE['command'],
+        'total_predictions': total,
+        'anomaly_count': anomalies,
+        'normal_count': total - anomalies,
+        'log_tail': read_sniffer_log_tail(),
+    }
+
 # ─────────────────────────────────────────────────────────────────
 # Views
 # ─────────────────────────────────────────────────────────────────
@@ -169,6 +261,80 @@ class SnifferPredictionView(View):
             'predicted_label': predicted_label,
             'predicted_class': predicted_class,
         })
+
+
+class SnifferMonitorView(View):
+    """Developer page for starting and stopping the local sniffer."""
+
+    template_name = 'detector/monitor.html'
+
+    def get(self, request):
+        return render(request, self.template_name, {
+            'title': 'Monitor',
+            'csrf_token_value': get_token(request),
+        })
+
+
+class SnifferStatusView(View):
+    def get(self, request):
+        with SNIFFER_LOCK:
+            return JsonResponse(sniffer_status_payload())
+
+
+class SnifferStartView(View):
+    def post(self, request):
+        with SNIFFER_LOCK:
+            if get_sniffer_process():
+                return JsonResponse(sniffer_status_payload())
+
+            try:
+                options = json.loads(request.body.decode('utf-8') or '{}')
+                command = build_sniffer_command(request, options)
+            except (TypeError, ValueError) as exc:
+                return JsonResponse({'error': f'Invalid sniffer options: {exc}'}, status=400)
+
+            if not SNIFFER_SCRIPT.exists():
+                return JsonResponse({'error': 'Sniffer script was not found.'}, status=500)
+
+            SNIFFER_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            log_handle = open(SNIFFER_LOG_PATH, 'a', encoding='utf-8', errors='replace')
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
+
+            try:
+                process = subprocess.Popen(
+                    command,
+                    cwd=str(PROJECT_ROOT),
+                    stdout=log_handle,
+                    stderr=log_handle,
+                    stdin=subprocess.DEVNULL,
+                    creationflags=creationflags,
+                )
+            except OSError as exc:
+                log_handle.close()
+                return JsonResponse({'error': f'Could not start sniffer: {exc}'}, status=500)
+
+            SNIFFER_STATE['process'] = process
+            SNIFFER_STATE['log_handle'] = log_handle
+            SNIFFER_STATE['command'] = command
+            return JsonResponse(sniffer_status_payload())
+
+
+class SnifferStopView(View):
+    def post(self, request):
+        with SNIFFER_LOCK:
+            process = get_sniffer_process()
+            if process:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+
+            close_sniffer_log()
+            SNIFFER_STATE['process'] = None
+            SNIFFER_STATE['command'] = []
+            return JsonResponse(sniffer_status_payload())
 
 
 class HistoryView(View):
