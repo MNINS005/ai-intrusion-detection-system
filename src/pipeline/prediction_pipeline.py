@@ -7,7 +7,6 @@ Loads preprocessor.pkl + model.pkl and runs inference on new input.
 import os
 import sys
 import pandas as pd
-import os
 from dataclasses import dataclass
 
 from src.logger import get_logger
@@ -22,6 +21,25 @@ BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 CONFIG_PATH = os.path.join(BASE, 'config', 'config.yaml')
 
 
+def resolve_artifact_path(path: str) -> str:
+    if os.path.isabs(path):
+        return path
+
+    candidates = [
+        os.path.normpath(os.path.join(BASE, path)),
+        os.path.normpath(os.path.join(BASE, path.lstrip("./\\"))),
+    ]
+
+    if path.startswith("../") or path.startswith("..\\"):
+        candidates.append(os.path.normpath(os.path.join(BASE, path[3:])))
+
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+
+    return candidates[0]
+
+
 @dataclass
 class PredictPipelineConfig:
     model_path:   str
@@ -32,8 +50,8 @@ class PredictPipeline:
     def __init__(self, config_path: str = CONFIG_PATH):
         cfg = read_yaml(config_path)
         self.config = PredictPipelineConfig(
-            model_path        = cfg["model_trainer"]["model_path"],
-            preprocessor_path = cfg["data_transformation"]["preprocessor_obj_path"],
+            model_path        = resolve_artifact_path(cfg["model_trainer"]["model_path"]),
+            preprocessor_path = resolve_artifact_path(cfg["data_transformation"]["preprocessor_obj_path"]),
         )
         self.model        = load_object(self.config.model_path)
         self.preprocessor = load_object(self.config.preprocessor_path)
